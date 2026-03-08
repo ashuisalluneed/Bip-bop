@@ -39,14 +39,8 @@ export default function Upload() {
   const [description, setDescription] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const attachHashtagsMutation = api.hashtag.attachToVideo.useMutation();
-
   const createVideoMutation = api.video.create.useMutation({
-    onSuccess: (data) => {
-      // Auto-extract #hashtags from description
-      if (description) {
-        attachHashtagsMutation.mutate({ videoId: data.id, description });
-      }
+    onSuccess: () => {
       toast.success("Video uploaded successfully!");
       setTitle("");
       setDescription("");
@@ -56,7 +50,6 @@ export default function Upload() {
       toast.error(`Error creating video record: ${err.message}`);
     },
   });
-
 
   const onDrop = (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -109,7 +102,14 @@ export default function Upload() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles) => void onDrop(acceptedFiles),
-    multiple: false
+    multiple: false,
+    accept: {
+      "video/mp4": [".mp4"],
+      "video/quicktime": [".mov"],
+      "video/x-msvideo": [".avi"],
+      "video/webm": [".webm"],
+    },
+    maxSize: 50 * 1024 * 1024, // 50 MB
   });
 
   return (
@@ -174,7 +174,7 @@ export default function Upload() {
               </div>
               <p className="text-xs text-gray-500">MP4, MOV, AVI up to 50MB</p>
             </div>
-            <input {...getInputProps()} />
+             <input {...getInputProps()} />
           </div>
         </div>
 
@@ -193,7 +193,7 @@ export default function Upload() {
         <div className="text-right">
           <button
             type="submit"
-            disabled={!title || uploadProgress > 0 && uploadProgress < 100}
+            disabled={!title || createVideoMutation.isPending || (uploadProgress > 0 && uploadProgress < 100)}
             className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
           >
             Upload Video

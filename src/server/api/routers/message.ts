@@ -115,34 +115,36 @@ export const messageRouter = createTRPCRouter({
 
       let convId = conversationId;
 
-      // If no conversation ID, find or create one
+      // If no conversation ID, find or create one atomically inside a transaction
       if (!convId) {
-        const existingConv = await ctx.db.conversation.findFirst({
-          where: {
-            AND: [
-              {
-                participants: {
-                  some: {
-                    userId: senderId,
+        convId = await ctx.db.$transaction(async (tx) => {
+          const existingConv = await tx.conversation.findFirst({
+            where: {
+              AND: [
+                {
+                  participants: {
+                    some: {
+                      userId: senderId,
+                    },
                   },
                 },
-              },
-              {
-                participants: {
-                  some: {
-                    userId: recipientId,
+                {
+                  participants: {
+                    some: {
+                      userId: recipientId,
+                    },
                   },
                 },
-              },
-            ],
-          },
-        });
+              ],
+            },
+          });
 
-        if (existingConv) {
-          convId = existingConv.id;
-        } else {
+          if (existingConv) {
+            return existingConv.id;
+          }
+
           // Create new conversation
-          const newConv = await ctx.db.conversation.create({
+          const newConv = await tx.conversation.create({
             data: {
               participants: {
                 create: [
@@ -152,8 +154,8 @@ export const messageRouter = createTRPCRouter({
               },
             },
           });
-          convId = newConv.id;
-        }
+          return newConv.id;
+        });
       }
 
       // Create the message

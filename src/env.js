@@ -12,6 +12,7 @@ export const env = createEnv({
         ? z.string()
         : z.string().optional(),
     DATABASE_URL: z.string().url(),
+    BLOB_READ_WRITE_TOKEN: z.string().optional(), // Required for file uploads via Vercel Blob
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -39,6 +40,7 @@ export const env = createEnv({
   runtimeEnv: {
     AUTH_SECRET: process.env.AUTH_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
+    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     NODE_ENV: process.env.NODE_ENV,
     PUSHER_APP_ID: process.env.PUSHER_APP_ID,
     PUSHER_SECRET: process.env.PUSHER_SECRET,
