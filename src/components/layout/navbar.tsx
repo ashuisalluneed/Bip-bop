@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Home, Compass, Plus, MessageSquare, User } from "lucide-react";
+import { Home, Compass, Plus, MessageSquare, User, BarChart2 } from "lucide-react";
 import { cn } from "~/lib/utils";
 
 export default function Navbar() {
@@ -15,6 +15,7 @@ export default function Navbar() {
     { icon: Home, label: "For You", href: "/" },
     { icon: Compass, label: "Discover", href: "/search" },
     { icon: MessageSquare, label: "Messages", href: "/messages" },
+    ...(session ? [{ icon: BarChart2, label: "Studio", href: "/studio" }] : []),
   ];
 
   return (
@@ -28,8 +29,8 @@ export default function Navbar() {
               <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-cyan-400">
                 {/* Custom BB Logo */}
                 <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M7 3h4a4 4 0 014 4 4 4 0 01-1.5 3.1A4 4 0 0115 14a4 4 0 01-4 4H7V3zm4 7a2 2 0 100-4H9v4h2zm0 6a2 2 0 100-4H9v4h2z"/>
-                  <circle cx="18" cy="18" r="3" opacity="0.8"/>
+                  <path d="M7 3h4a4 4 0 014 4 4 4 0 01-1.5 3.1A4 4 0 0115 14a4 4 0 01-4 4H7V3zm4 7a2 2 0 100-4H9v4h2zm0 6a2 2 0 100-4H9v4h2z" />
+                  <circle cx="18" cy="18" r="3" opacity="0.8" />
                 </svg>
               </div>
             </div>

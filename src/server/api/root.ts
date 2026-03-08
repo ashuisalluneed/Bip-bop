@@ -6,6 +6,9 @@ import { followRouter } from "~/server/api/routers/follow";
 import { searchRouter } from "~/server/api/routers/search";
 import { messageRouter } from "~/server/api/routers/message";
 import { notificationRouter } from "~/server/api/routers/notification";
+import { studioRouter } from "~/server/api/routers/studio";
+import { hashtagRouter } from "~/server/api/routers/hashtag";
+import { webrtcRouter } from "~/server/api/routers/webrtc";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -21,7 +24,10 @@ export const appRouter = createTRPCRouter({
   follow: followRouter,
   search: searchRouter,
   message: messageRouter,
+  webrtc: webrtcRouter,
   notification: notificationRouter,
+  studio: studioRouter,
+  hashtag: hashtagRouter,
 });
 
 // export type definition of API

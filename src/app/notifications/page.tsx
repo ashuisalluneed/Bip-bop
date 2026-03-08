@@ -1,18 +1,41 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { Heart, MessageCircle, UserPlus, Bell, Check, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "~/trpc/react";
+import { useSession } from "next-auth/react";
 import { Avatar } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
 import toast from "react-hot-toast";
+import { getPusherClient, userChannel, PUSHER_EVENTS } from "~/lib/pusher";
 
 export default function NotificationsPage() {
+  const { data: session } = useSession();
   const utils = api.useUtils();
   const { data: notifications, isLoading } = api.notification.getAll.useQuery();
   const { data: unreadCount } = api.notification.getUnreadCount.useQuery();
+
+  // ─── Pusher: subscribe to this user’s notification channel ───────────────────────
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const pusher = getPusherClient();
+    const channel = pusher.subscribe(userChannel(userId));
+
+    // New notification arrives → refresh notification list + count
+    channel.bind(PUSHER_EVENTS.NEW_NOTIFICATION, () => {
+      void utils.notification.invalidate();
+    });
+
+    return () => {
+      channel.unbind_all();
+      pusher.unsubscribe(userChannel(userId));
+    };
+  }, [session?.user?.id, utils]);
 
   const markAsReadMutation = api.notification.markAsRead.useMutation({
     onSuccess: () => {
@@ -111,11 +134,10 @@ export default function NotificationsPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className={`group relative rounded-2xl border p-4 transition-all hover:border-white/20 ${
-                  notification.read
+                className={`group relative rounded-2xl border p-4 transition-all hover:border-white/20 ${notification.read
                     ? "border-white/5 bg-white/5"
                     : "border-pink-500/20 bg-pink-500/5"
-                }`}
+                  }`}
               >
                 <div className="flex items-start gap-4">
                   {/* Actor Avatar */}

@@ -39,8 +39,14 @@ export default function Upload() {
   const [description, setDescription] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  const attachHashtagsMutation = api.hashtag.attachToVideo.useMutation();
+
   const createVideoMutation = api.video.create.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Auto-extract #hashtags from description
+      if (description) {
+        attachHashtagsMutation.mutate({ videoId: data.id, description });
+      }
       toast.success("Video uploaded successfully!");
       setTitle("");
       setDescription("");
@@ -50,6 +56,7 @@ export default function Upload() {
       toast.error(`Error creating video record: ${err.message}`);
     },
   });
+
 
   const onDrop = (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -100,9 +107,9 @@ export default function Upload() {
     xhr.send(formData);
   };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles) => void onDrop(acceptedFiles),
-    multiple: false 
+    multiple: false
   });
 
   return (
@@ -167,7 +174,7 @@ export default function Upload() {
               </div>
               <p className="text-xs text-gray-500">MP4, MOV, AVI up to 50MB</p>
             </div>
-             <input {...getInputProps()} />
+            <input {...getInputProps()} />
           </div>
         </div>
 

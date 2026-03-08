@@ -6,7 +6,7 @@ import Comments from './comments';
 import { api } from "~/trpc/react";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
-import { Heart, MessageCircle, Share2, Bookmark, Volume2, VolumeX, Play } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Volume2, VolumeX, Play, Eye } from "lucide-react";
 import { cn, formatNumber } from "~/lib/utils";
 import { Avatar } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
@@ -21,6 +21,7 @@ interface VideoCardProps {
   description: string;
   likesCount?: number;
   commentsCount?: number;
+  viewsCount?: number;
   isLiked?: boolean;
   isBookmarked?: boolean;
   isActive?: boolean;
@@ -35,6 +36,7 @@ export default function VideoCard({
   description,
   likesCount = 0,
   commentsCount = 0,
+  viewsCount = 0,
   isLiked = false,
   isBookmarked = false,
   isActive = false,
@@ -45,11 +47,13 @@ export default function VideoCard({
   const [likes, setLikes] = useState(likesCount);
   const [bookmarked, setBookmarked] = useState(isBookmarked);
   const [comments, setComments] = useState(commentsCount);
+  const [views, setViews] = useState(viewsCount);
   const [following, setFollowing] = useState(false);
+  const viewRecordedRef = useRef(false);
   const [showComments, setShowComments] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
-  
+
   const toggleLikeMutation = api.video.toggleLike.useMutation({
     onSuccess: (data) => {
       setLiked(data.liked);
@@ -80,6 +84,10 @@ export default function VideoCard({
     }
   });
 
+  const recordViewMutation = api.video.recordView.useMutation({
+    onSuccess: () => setViews(v => v + 1),
+  });
+
   // Check if following
   const { data: followData } = api.follow.isFollowing.useQuery(
     { userId },
@@ -98,12 +106,23 @@ export default function VideoCard({
       if (isActive) {
         videoRef.current.play().catch(() => console.error("Video play error"));
         setIsPlaying(true);
+
+        // Record view after 2s of active playback (prevents swipe-through inflation)
+        const timer = setTimeout(() => {
+          if (!viewRecordedRef.current) {
+            viewRecordedRef.current = true;
+            recordViewMutation.mutate({ videoId: id });
+          }
+        }, 2000);
+
+        return () => clearTimeout(timer);
       } else {
         videoRef.current.pause();
         setIsPlaying(false);
+        viewRecordedRef.current = false; // reset so re-watch counts again
       }
     }
-  }, [isActive]);
+  }, [isActive, id]);
 
 
 
@@ -118,7 +137,7 @@ export default function VideoCard({
       toast.success('Link copied to clipboard!');
     }
   };
-  
+
   const handleLike = () => {
     if (!session) {
       toast.error("You must be signed in to like videos");
@@ -126,7 +145,7 @@ export default function VideoCard({
     }
     toggleLikeMutation.mutate({ videoId: id });
   };
-  
+
   const handleComment = () => {
     if (!session) {
       toast.error("You must be signed in to comment");
@@ -171,9 +190,9 @@ export default function VideoCard({
     <div className="relative h-full w-full bg-black overflow-hidden">
       {/* Video */}
       <div className="absolute inset-0 z-0">
-        <video 
+        <video
           ref={videoRef}
-          src={videoUrl} 
+          src={videoUrl}
           poster={thumbnailUrl}
           className="h-full w-full object-cover"
           loop
@@ -181,7 +200,7 @@ export default function VideoCard({
           muted={isMuted}
           onClick={handleDoubleTap}
         />
-        
+
         {/* Double tap heart animation */}
         <AnimatePresence>
           {!isPlaying && (
@@ -202,18 +221,18 @@ export default function VideoCard({
           )}
         </AnimatePresence>
       </div>
-      
+
       {/* Top gradient overlay */}
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/60 to-transparent z-10" />
-      
+
       {/* Bottom gradient overlay */}
       <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10" />
-      
+
       {/* User info and description */}
       <div className="absolute bottom-20 left-4 right-20 z-20 text-white">
         <div className="flex items-center gap-3 mb-3">
           <motion.div whileHover={{ scale: 1.1 }}>
-            <Avatar 
+            <Avatar
               fallback={username.charAt(0).toUpperCase()}
               size="lg"
             />
@@ -222,8 +241,8 @@ export default function VideoCard({
             <h2 className="text-base font-semibold">@{username}</h2>
           </div>
           {session && userId !== session.user.id && (
-            <Button 
-              variant={following ? "secondary" : "primary"} 
+            <Button
+              variant={following ? "secondary" : "primary"}
               size="sm"
               onClick={handleFollow}
               disabled={toggleFollowMutation.isPending}
@@ -232,17 +251,17 @@ export default function VideoCard({
             </Button>
           )}
         </div>
-        
+
         {description && (
           <p className="text-sm leading-relaxed mb-2 line-clamp-2">{description}</p>
         )}
-        
+
         <div className="flex items-center gap-2 text-xs opacity-80">
           <span>♫</span>
           <span className="truncate">Original sound - {username}</span>
         </div>
       </div>
-      
+
       {/* Action buttons sidebar */}
       <div className="absolute right-3 bottom-24 z-20 flex flex-col gap-6">
         {/* Like button */}
@@ -261,7 +280,7 @@ export default function VideoCard({
               "rounded-full p-3 backdrop-blur-sm transition-colors",
               liked ? "bg-[#FE2C55]/20" : "bg-black/20"
             )}>
-              <Heart 
+              <Heart
                 className={cn(
                   "h-7 w-7 transition-all",
                   liked ? "fill-[#FE2C55] text-[#FE2C55]" : "text-white"
@@ -273,7 +292,7 @@ export default function VideoCard({
             {formatNumber(likes)}
           </span>
         </motion.button>
-        
+
         {/* Comment button */}
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -287,7 +306,17 @@ export default function VideoCard({
             {formatNumber(comments)}
           </span>
         </motion.button>
-        
+
+        {/* Views */}
+        <div className="flex flex-col items-center gap-1">
+          <div className="rounded-full p-3 bg-black/20 backdrop-blur-sm">
+            <Eye className="h-7 w-7 text-white" />
+          </div>
+          <span className="text-white text-xs font-semibold drop-shadow-lg">
+            {formatNumber(views)}
+          </span>
+        </div>
+
         {/* Bookmark button */}
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -303,7 +332,7 @@ export default function VideoCard({
               "rounded-full p-3 backdrop-blur-sm transition-colors",
               bookmarked ? "bg-yellow-500/20" : "bg-black/20"
             )}>
-              <Bookmark 
+              <Bookmark
                 className={cn(
                   "h-7 w-7 transition-all",
                   bookmarked ? "fill-yellow-500 text-yellow-500" : "text-white"
@@ -312,7 +341,7 @@ export default function VideoCard({
             </div>
           </motion.div>
         </motion.button>
-        
+
         {/* Share button */}
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -323,7 +352,7 @@ export default function VideoCard({
             <Share2 className="h-7 w-7 text-white" />
           </div>
         </motion.button>
-        
+
         {/* More options */}
         <VideoOptionsMenu
           videoId={id}
@@ -331,20 +360,20 @@ export default function VideoCard({
           userId={userId}
           username={username}
         />
-        
+
         {/* Rotating disc avatar */}
         <motion.div
           animate={{ rotate: isPlaying ? 360 : 0 }}
           transition={{ duration: 3, repeat: isPlaying ? Infinity : 0, ease: "linear" }}
           className="mt-2"
         >
-          <Avatar 
+          <Avatar
             fallback={username.charAt(0).toUpperCase()}
             size="lg"
           />
         </motion.div>
       </div>
-      
+
       {/* Volume control */}
       <motion.button
         whileTap={{ scale: 0.9 }}
@@ -371,7 +400,7 @@ export default function VideoCard({
             <div className="h-full flex flex-col">
               <div className="flex items-center justify-between p-4 border-b border-white/10">
                 <h3 className="text-white font-semibold text-lg">Comments</h3>
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowComments(false)}
                   className="text-white/70 hover:text-white transition-colors"
@@ -383,8 +412,8 @@ export default function VideoCard({
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <Comments 
-                  videoId={id} 
+                <Comments
+                  videoId={id}
                   onCommentAdded={() => setComments(prev => prev + 1)}
                 />
               </div>

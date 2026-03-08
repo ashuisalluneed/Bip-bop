@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense, useMemo } from "react";
 import { api } from "~/trpc/react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
@@ -13,13 +13,15 @@ import { formatTimeAgo } from "~/lib/utils";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { MessageStatus } from "~/app/_components/message-status";
+import { getPusherClient, conversationChannel, PUSHER_EVENTS } from "~/lib/pusher";
+import type { EventEnvelope, MessageSendPayload, MessageReadPayload } from "~/lib/aurora/types";
 
 function MessagesContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const recipientId = searchParams.get("recipientId");
   const conversationId = searchParams.get("conversationId");
-  
+
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
   const [newRecipientId, setNewRecipientId] = useState<string | null>(recipientId);
@@ -30,10 +32,18 @@ function MessagesContent() {
     { enabled: !!session }
   );
 
-  const { data: messages, refetch: refetchMessages } = api.message.getMessages.useQuery(
+  const { data: events, refetch: refetchMessages } = api.message.getMessages.useQuery(
     { conversationId: selectedConversation! },
     { enabled: !!selectedConversation }
   );
+
+  // Local event state for optimistic/real-time updates
+  const [localEvents, setLocalEvents] = useState<EventEnvelope[]>([]);
+
+  // Sync server events into local array
+  useEffect(() => {
+    if (events) setLocalEvents(events);
+  }, [events]);
 
   const markAsDeliveredMutation = api.message.markAsDelivered.useMutation();
   const markAsReadMutation = api.message.markAsRead.useMutation({
@@ -53,10 +63,9 @@ function MessagesContent() {
     onSuccess: (data) => {
       setMessageText("");
       setNewRecipientId(null);
-      void refetchMessages();
       void refetchConversations();
       scrollToBottom();
-      
+
       // Update URL to show conversation
       if (data.conversationId) {
         window.history.replaceState({}, "", `/messages?conversationId=${data.conversationId}`);
@@ -68,13 +77,44 @@ function MessagesContent() {
     },
   });
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [localEvents, scrollToBottom]);
+
+  // ─── Pusher: real-time subscription per conversation ───────────────────────
+  // Note: This operates on Aurora Events now, not raw messages
+  useEffect(() => {
+    if (!selectedConversation || !session?.user?.id) return;
+
+    const pusher = getPusherClient();
+    const channel = pusher.subscribe(conversationChannel(selectedConversation));
+
+    // New event arrives → append to localEvents
+    channel.bind(PUSHER_EVENTS.NEW_MESSAGE, (newEvent: EventEnvelope) => {
+      setLocalEvents((prev) => {
+        if (!prev) return [newEvent];
+        // Avoid duplicates via ULID
+        if (prev.some((e) => e.id === newEvent.id)) return prev;
+        return [...prev, newEvent];
+      });
+      void refetchConversations();
+      scrollToBottom();
+    });
+
+    // We can handle read/delivered via standard events now, but here's the legacy hook just in case
+    channel.bind(PUSHER_EVENTS.MESSAGE_STATUS, () => {
+      void refetchMessages();
+    });
+
+    return () => {
+      channel.unbind_all();
+      pusher.unsubscribe(conversationChannel(selectedConversation));
+    };
+  }, [selectedConversation, session?.user?.id, refetchMessages, refetchConversations, scrollToBottom]);
 
   // Handle URL parameters
   useEffect(() => {
@@ -97,20 +137,23 @@ function MessagesContent() {
   // Mark messages as delivered when conversation is opened
   useEffect(() => {
     if (selectedConversation) {
+      // Fire-and-forget
       markAsDeliveredMutation.mutate({ conversationId: selectedConversation });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation]);
 
   // Mark messages as read when user is viewing them
   useEffect(() => {
-    if (selectedConversation && messages && messages.length > 0) {
+    if (selectedConversation && localEvents && localEvents.length > 0) {
       const timer = setTimeout(() => {
         markAsReadMutation.mutate({ conversationId: selectedConversation });
       }, 1000); // Wait 1 second before marking as read
 
       return () => clearTimeout(timer);
     }
-  }, [selectedConversation, messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation, localEvents]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,6 +181,55 @@ function MessagesContent() {
     });
   };
 
+  // -------------------------------------------------------------------------------- //
+  //  Aurora Projection & Materialization Logic
+  // -------------------------------------------------------------------------------- //
+
+  // Project raw events into UI 'Message' blocks
+  const materializedMessages = useMemo(() => {
+    if (!localEvents || localEvents.length === 0) return [];
+
+    // Map messageId to final display object
+    const msgMap = new Map<string, any>();
+
+    // Sort array by time to replay events in order
+    const sorted = [...localEvents].sort((a, b) => a.timestamp - b.timestamp);
+
+    for (const ev of sorted) {
+      if (ev.type === "message:send") {
+        const payload = ev.payload as MessageSendPayload;
+        msgMap.set(payload.messageId, {
+          id: payload.messageId,
+          content: payload.content,
+          senderId: ev.senderId,
+          createdAt: new Date(ev.timestamp),
+          status: "sent",
+          readAt: null,
+          deliveredAt: null
+        });
+      }
+
+      if (ev.type === "message:delete" || ev.type === "message:edit") {
+        // Stub implementation, extend if feature requested
+      }
+
+      if (ev.type === "message:read") {
+        const payload = ev.payload as MessageReadPayload;
+        // The read event denotes everything BEFORE this point was read.
+        for (const [mid, msg] of msgMap.entries()) {
+          // If the message was sent by someone ELSE, and was sent BEFORE this read payload...
+          if (msg.senderId !== ev.senderId && msg.createdAt.getTime() <= payload.lastReadTimestamp) {
+            msgMap.set(mid, { ...msg, status: "read", readAt: new Date(ev.timestamp) });
+          }
+        }
+      }
+    }
+
+    // Output array sorted chronologically
+    return Array.from(msgMap.values()).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }, [localEvents]);
+
+
   if (!session) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0a0a0a] text-white">
@@ -161,9 +253,8 @@ function MessagesContent() {
     <main className="fixed inset-0 top-0 bg-[#0a0a0a] text-white flex overflow-hidden">
       {/* Conversations List */}
       <div
-        className={`${
-          selectedConversation ? "hidden md:flex" : "flex"
-        } flex-col w-full md:w-96 md:max-w-[400px] border-r border-white/10 flex-shrink-0`}
+        className={`${selectedConversation ? "hidden md:flex" : "flex"
+          } flex-col w-full md:w-96 md:max-w-[400px] border-r border-white/10 flex-shrink-0`}
       >
         {/* Header */}
         <div className="p-4 border-b border-white/10">
@@ -187,9 +278,8 @@ function MessagesContent() {
                   key={conversation.id}
                   whileHover={{ backgroundColor: "rgba(255, 255, 255, 0.05)" }}
                   onClick={() => setSelectedConversation(conversation.id)}
-                  className={`w-full p-4 flex items-center gap-3 border-b border-white/5 transition-colors ${
-                    selectedConversation === conversation.id ? "bg-white/10" : ""
-                  }`}
+                  className={`w-full p-4 flex items-center gap-3 border-b border-white/5 transition-colors ${selectedConversation === conversation.id ? "bg-white/10" : ""
+                    }`}
                 >
                   <Avatar
                     src={conversation.otherParticipant?.image ?? undefined}
@@ -206,10 +296,10 @@ function MessagesContent() {
                     </h3>
                     <div className="flex items-center gap-1">
                       {conversation.lastMessage?.senderId === session.user.id && (
-                        <MessageStatus 
-                          status={conversation.lastMessage?.status as "sent" | "delivered" | "read"} 
+                        <MessageStatus
+                          status={conversation.lastMessage?.status as "sent" | "delivered" | "read" ?? "sent"}
                           isOwn={true}
-                          readAt={conversation.lastMessage?.readAt}
+                          readAt={conversation.lastMessage?.readAt as Date | undefined}
                         />
                       )}
                       <p className="text-sm text-white/60 truncate">
@@ -241,9 +331,8 @@ function MessagesContent() {
 
       {/* Chat Area */}
       <div
-        className={`${
-          selectedConversation || newRecipientId ? "flex" : "hidden md:flex"
-        } flex-col flex-1 min-w-0`}
+        className={`${selectedConversation || newRecipientId ? "flex" : "hidden md:flex"
+          } flex-col flex-1 min-w-0`}
       >
         {selectedConv || newRecipientId ? (
           <div className="flex flex-col h-full">
@@ -262,16 +351,16 @@ function MessagesContent() {
               </button>
               <Avatar
                 src={
-                  selectedConv?.otherParticipant?.image ?? 
-                  recipientUser?.image ?? 
+                  selectedConv?.otherParticipant?.image ??
+                  recipientUser?.image ??
                   undefined
                 }
                 fallback={
-                  (selectedConv?.otherParticipant?.username ?? 
-                   recipientUser?.username ?? 
-                   selectedConv?.otherParticipant?.name ?? 
-                   recipientUser?.name ?? 
-                   "U")
+                  (selectedConv?.otherParticipant?.username ??
+                    recipientUser?.username ??
+                    selectedConv?.otherParticipant?.name ??
+                    recipientUser?.name ??
+                    "U")
                     .charAt(0)
                     .toUpperCase()
                 }
@@ -292,7 +381,7 @@ function MessagesContent() {
                     "..."}
                 </p>
               </div>
-              
+
               {/* Call Buttons */}
               <div className="flex items-center gap-2">
                 <button
@@ -314,9 +403,9 @@ function MessagesContent() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-              {messages && messages.length > 0 ? (
+              {materializedMessages && materializedMessages.length > 0 ? (
                 <>
-                  {messages.map((message) => {
+                  {materializedMessages.map((message) => {
                     const isOwn = message.senderId === session.user.id;
                     return (
                       <motion.div
@@ -326,19 +415,18 @@ function MessagesContent() {
                         className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[70%] rounded-2xl px-4 py-2 ${
-                            isOwn
-                              ? "bg-gradient-to-r from-pink-500 to-cyan-400 text-white"
-                              : "bg-white/10 text-white"
-                          }`}
+                          className={`max-w-[70%] rounded-2xl px-4 py-2 ${isOwn
+                            ? "bg-gradient-to-r from-pink-500 to-cyan-400 text-white"
+                            : "bg-white/10 text-white"
+                            }`}
                         >
                           <p className="break-words">{message.content}</p>
                           <div className="flex items-center gap-1 mt-1">
                             <span className="text-xs opacity-70">
                               {formatTimeAgo(new Date(message.createdAt))}
                             </span>
-                            <MessageStatus 
-                              status={message.status as "sent" | "delivered" | "read"} 
+                            <MessageStatus
+                              status={message.status as "sent" | "delivered" | "read"}
                               isOwn={isOwn}
                               readAt={message.readAt}
                             />
@@ -418,3 +506,4 @@ export default function MessagesPage() {
     </Suspense>
   );
 }
+

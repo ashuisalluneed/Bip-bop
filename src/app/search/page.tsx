@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api } from "~/trpc/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, TrendingUp, Users, Video, Loader2 } from "lucide-react";
+import { Search, TrendingUp, Users, Video, Loader2, Hash } from "lucide-react";
 import Link from "next/link";
 import { Avatar } from "~/components/ui/avatar";
 import { Input } from "~/components/ui/input";
@@ -40,6 +40,8 @@ export default function SearchPage() {
   const { data: trendingVideos } = api.search.getTrendingVideos.useQuery({
     limit: 10,
   });
+
+  const { data: trendingHashtags } = api.hashtag.getTrending.useQuery({ limit: 20 });
 
   const tabs = [
     { id: "all", label: "All", icon: Search },
@@ -78,11 +80,10 @@ export default function SearchPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`relative flex items-center gap-2 rounded-full px-4 py-2 whitespace-nowrap transition-colors ${
-                    isActive
+                  className={`relative flex items-center gap-2 rounded-full px-4 py-2 whitespace-nowrap transition-colors ${isActive
                       ? "bg-gradient-to-r from-pink-500 to-cyan-400 text-white"
                       : "bg-white/10 text-white/60 hover:bg-white/20 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span className="font-medium">{tab.label}</span>
@@ -205,6 +206,37 @@ export default function SearchPage() {
         ) : (
           /* Trending Content */
           <div className="space-y-8">
+            {/* Trending Hashtags */}
+            {trendingHashtags && trendingHashtags.length > 0 && (
+              <div>
+                <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+                  <Hash className="h-5 w-5 text-pink-500" />
+                  Trending Hashtags
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {trendingHashtags.map((tag, i) => (
+                    <motion.div
+                      key={tag.id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.03 }}
+                    >
+                      <button
+                        onClick={() => handleSearch(`#${tag.name}`)}
+                        className="group flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium transition-all hover:border-pink-500/40 hover:bg-pink-500/10 hover:text-pink-400"
+                      >
+                        <span className="text-pink-500">#</span>
+                        <span>{tag.name}</span>
+                        <span className="ml-1 text-xs text-gray-500 group-hover:text-pink-500/60">
+                          {formatNumber(tag.videoCount)}
+                        </span>
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Trending Users */}
             {trendingUsers && trendingUsers.length > 0 && (
               <div>

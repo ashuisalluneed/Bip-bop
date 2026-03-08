@@ -61,13 +61,13 @@ export default function VideoFeed() {
     const handleScroll = () => {
       setIsScrolling(true);
       clearTimeout(scrollTimeout);
-      
+
       scrollTimeout = setTimeout(() => {
         setIsScrolling(false);
         const scrollTop = container.scrollTop;
         const videoHeight = window.innerHeight;
         const newIndex = Math.round(scrollTop / videoHeight);
-        
+
         if (newIndex !== activeVideoIndex && newIndex >= 0 && newIndex < videos.length) {
           setActiveVideoIndex(newIndex);
           scrollToVideo(newIndex);
@@ -105,7 +105,7 @@ export default function VideoFeed() {
           {/* Skeleton video card */}
           <div className="absolute inset-0">
             <Skeleton className="h-full w-full" />
-            
+
             {/* Skeleton user info */}
             <div className="absolute bottom-20 left-4 right-20 space-y-3">
               <div className="flex items-center gap-3">
@@ -116,7 +116,7 @@ export default function VideoFeed() {
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-3 w-1/2" />
             </div>
-            
+
             {/* Skeleton action buttons */}
             <div className="absolute right-3 bottom-24 space-y-6">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -127,7 +127,7 @@ export default function VideoFeed() {
               ))}
             </div>
           </div>
-          
+
           {/* Loading indicator */}
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="text-center">
@@ -165,20 +165,20 @@ export default function VideoFeed() {
             <div className="relative">
               {/* Glow effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-pink-500 to-cyan-400 rounded-3xl blur-3xl opacity-20 animate-pulse-glow" />
-              
+
               {/* Icon container */}
               <div className="relative bg-gradient-to-br from-pink-500/10 to-cyan-400/10 p-12 rounded-3xl border border-white/10">
-                <svg 
-                  className="w-24 h-24 text-white/80" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
+                <svg
+                  className="w-24 h-24 text-white/80"
+                  fill="none"
+                  viewBox="0 0 24 24"
                   stroke="currentColor"
                   strokeWidth={1.5}
                 >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" 
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
                   />
                 </svg>
               </div>
@@ -224,7 +224,7 @@ export default function VideoFeed() {
             className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6"
           >
             {[
-              { 
+              {
                 icon: (
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -233,7 +233,7 @@ export default function VideoFeed() {
                 title: "Create",
                 description: "Share your unique perspective"
               },
-              { 
+              {
                 icon: (
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -242,7 +242,7 @@ export default function VideoFeed() {
                 title: "Connect",
                 description: "Build your community"
               },
-              { 
+              {
                 icon: (
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -275,7 +275,7 @@ export default function VideoFeed() {
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden">
       {/* Video container with snap scrolling */}
-      <div 
+      <div
         ref={containerRef}
         className="h-full w-full overflow-y-scroll snap-y snap-mandatory scrollbar-hide"
       >
@@ -284,21 +284,23 @@ export default function VideoFeed() {
             key={video.id}
             className="h-screen w-full snap-start snap-always"
           >
-            <VideoCard 
+            <VideoCard
               id={video.id}
               videoUrl={video.filePath}
+              thumbnailUrl={video.thumbnailUrl ?? undefined}
               username={video.user.username ?? video.user.name ?? 'Anonymous'}
               userId={video.user.id}
               description={video.description ?? video.title ?? ''}
               likesCount={video._count.likes}
               commentsCount={video._count.comments}
+              viewsCount={video.viewCount}
               isLiked={video.userHasLiked}
               isBookmarked={video.userHasBookmarked}
               isActive={index === activeVideoIndex}
             />
           </div>
         ))}
-        
+
         {/* Loading more indicator */}
         {hasNextPage && (
           <div ref={ref} className="h-20 flex items-center justify-center">
