@@ -7,12 +7,14 @@ import Link from "next/link";
 import { formatNumber } from "~/lib/utils";
 import { Avatar } from "~/components/ui/avatar";
 
+import React from "react";
+
 interface PageProps {
     params: Promise<{ tag: string }>;
 }
 
-export default async function HashtagPage({ params }: PageProps) {
-    const { tag } = await params;
+export default function HashtagPage({ params }: PageProps) {
+    const { tag } = React.use(params);
     return <HashtagContent tag={tag} />;
 }
 

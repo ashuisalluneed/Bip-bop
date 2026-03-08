@@ -100,41 +100,21 @@ export default function VideoFeed() {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-full bg-black">
-        <div className="relative h-full w-full">
-          {/* Skeleton video card */}
-          <div className="absolute inset-0">
-            <Skeleton className="h-full w-full" />
-
-            {/* Skeleton user info */}
-            <div className="absolute bottom-20 left-4 right-20 space-y-3">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-12 w-12 rounded-full" />
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-8 w-20 ml-auto" />
-              </div>
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
-            </div>
-
-            {/* Skeleton action buttons */}
-            <div className="absolute right-3 bottom-24 space-y-6">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex flex-col items-center gap-1">
-                  <Skeleton className="h-12 w-12 rounded-full" />
-                  <Skeleton className="h-3 w-8" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Loading indicator */}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="text-center">
-              <Loader2 className="w-12 h-12 text-[#FE2C55] animate-spin mx-auto" />
-              <p className="text-white/60 mt-4 text-sm">Loading videos...</p>
-            </div>
-          </div>
+      <div className="h-screen w-full bg-[#0a0a0a] overflow-hidden flex items-center justify-center relative">
+        {/* Animated Mesh Background */}
+        <div className="absolute inset-0 opacity-40 pointer-events-none">
+           <div className="absolute top-1/4 left-1/4 w-[50vw] h-[50vw] bg-[#7c3aed] rounded-full mix-blend-screen filter blur-[100px] animate-pulse-glow" />
+           <div className="absolute bottom-1/4 right-1/4 w-[50vw] h-[50vw] bg-[#ec4899] rounded-full mix-blend-screen filter blur-[100px] animate-pulse-glow" style={{ animationDelay: '1s' }} />
+        </div>
+        
+        <div className="relative z-10 text-center flex flex-col items-center">
+           <div className="relative mb-6">
+             <div className="absolute inset-0 bg-gradient-to-tr from-[#ec4899] to-[#7c3aed] rounded-full blur-xl opacity-60 animate-pulse-glow" />
+             <div className="relative bg-white/5 p-4 rounded-full border border-white/20 backdrop-blur-xl shadow-2xl">
+               <Loader2 className="w-8 h-8 text-white animate-spin" />
+             </div>
+           </div>
+           <p className="text-white/80 font-medium tracking-widest uppercase text-xs animate-pulse">Loading Feed</p>
         </div>
       </div>
     );

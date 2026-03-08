@@ -11,6 +11,7 @@ import { cn, formatNumber } from "~/lib/utils";
 import { Avatar } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
 import VideoOptionsMenu from "./video-options-menu";
+import ShinyText from "~/components/ui/shiny-text";
 
 interface VideoCardProps {
   id: number;
@@ -122,6 +123,7 @@ export default function VideoCard({
         viewRecordedRef.current = false; // reset so re-watch counts again
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, id]);
 
 
@@ -241,7 +243,7 @@ export default function VideoCard({
             />
           </motion.div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold drop-shadow-md">@{username}</h2>
+            <ShinyText text={`@${username}`} className="text-lg font-bold drop-shadow-md" speed={3} />
           </div>
           {session && userId !== session.user.id && (
             <Button
@@ -260,9 +262,9 @@ export default function VideoCard({
           <p className="text-sm leading-relaxed mb-3 drop-shadow-md line-clamp-2">{description}</p>
         )}
 
-        <div className="flex items-center gap-2 mt-3 bg-white/10 w-fit px-3 py-1.5 rounded-full backdrop-blur-md">
-          <span className="text-white text-xs opacity-80">♫</span>
-          <span className="text-white text-xs font-medium truncate w-48 drop-shadow-md">Original sound - {username}</span>
+        <div className="flex items-center gap-2 mt-3 bg-white/10 w-fit px-3 py-1.5 rounded-full backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+          <span className="text-white text-xs opacity-80 animate-bounce">♫</span>
+          <ShinyText text={`Original sound - ${username}`} className="text-xs font-medium truncate w-48 drop-shadow-md" />
         </div>
       </div>
 
@@ -281,8 +283,8 @@ export default function VideoCard({
             className="relative"
           >
             <div className={cn(
-              "flex items-center justify-center rounded-full p-3 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors",
-              liked ? "bg-[#ec4899]/20" : "bg-white/10 group-hover:bg-white/20"
+              "flex items-center justify-center rounded-full p-3 backdrop-blur-md border shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all",
+              liked ? "bg-[#ec4899]/20 border-[#ec4899]/50 shadow-[0_0_15px_rgba(236,72,153,0.3)]" : "bg-white/10 border-white/20 group-hover:bg-white/20 group-hover:border-white/40"
             )}>
               <Heart
                 className={cn(
@@ -303,7 +305,7 @@ export default function VideoCard({
           onClick={handleComment}
           className="flex flex-col items-center gap-1 group"
         >
-          <div className="flex items-center justify-center rounded-full p-3 bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] group-hover:bg-white/20 transition-colors">
+          <div className="flex items-center justify-center rounded-full p-3 bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] group-hover:bg-white/20 group-hover:border-white/40 transition-all">
             <MessageCircle className="h-7 w-7 text-white" />
           </div>
           <span className="text-white text-xs font-bold drop-shadow-md">
@@ -313,7 +315,7 @@ export default function VideoCard({
 
         {/* Views */}
         <div className="flex flex-col items-center gap-1 group">
-          <div className="flex items-center justify-center rounded-full p-3 bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors">
+          <div className="flex items-center justify-center rounded-full p-3 bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] group-hover:bg-white/20 group-hover:border-white/40 transition-all">
             <Eye className="h-7 w-7 text-white" />
           </div>
           <span className="text-white text-xs font-bold drop-shadow-md">
@@ -333,8 +335,8 @@ export default function VideoCard({
             transition={{ duration: 0.3 }}
           >
             <div className={cn(
-              "flex items-center justify-center rounded-full p-3 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors",
-              bookmarked ? "bg-yellow-500/20" : "bg-white/10 group-hover:bg-white/20"
+              "flex items-center justify-center rounded-full p-3 backdrop-blur-md border shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all",
+              bookmarked ? "bg-yellow-500/20 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.3)]" : "bg-white/10 border-white/20 group-hover:bg-white/20 group-hover:border-white/40"
             )}>
               <Bookmark
                 className={cn(
@@ -352,7 +354,7 @@ export default function VideoCard({
           onClick={handleShare}
           className="flex flex-col items-center gap-1 group"
         >
-          <div className="flex items-center justify-center rounded-full p-3 bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] group-hover:bg-white/20 transition-colors">
+          <div className="flex items-center justify-center rounded-full p-3 bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] group-hover:bg-white/20 group-hover:border-white/40 transition-all">
             <Share2 className="h-7 w-7 text-white" />
           </div>
         </motion.button>

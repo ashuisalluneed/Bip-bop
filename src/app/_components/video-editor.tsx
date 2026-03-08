@@ -14,7 +14,6 @@ import {
   Palette,
   ArrowLeft,
   ArrowRight,
-  Sliders,
   Filter,
 } from "lucide-react";
 import { Input } from "~/components/ui/input";

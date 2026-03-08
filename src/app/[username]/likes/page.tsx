@@ -85,7 +85,7 @@ export default function LikesPage({ params }: Props) {
                   <div className="flex-1">
                     <Link href={`/?videoId=${video.id}`}>
                       <h3 className="mb-2 text-lg font-semibold hover:underline">
-                        {video.title || "Untitled Video"}
+                        {video.title ?? "Untitled Video"}
                       </h3>
                     </Link>
                     <div className="flex items-center gap-4 text-sm text-gray-400">

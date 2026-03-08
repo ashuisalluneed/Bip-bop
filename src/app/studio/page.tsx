@@ -74,7 +74,7 @@ export default function StudioPage() {
             toast.success("Video deleted");
             void utils.studio.invalidate();
         },
-        onError: (e: any) => toast.error(e.message),
+        onError: (e) => toast.error(e.message),
     });
 
     if (!session) {

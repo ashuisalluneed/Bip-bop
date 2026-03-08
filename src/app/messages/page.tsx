@@ -203,8 +203,18 @@ function MessagesContent() {
   const materializedMessages = useMemo(() => {
     if (!localEvents || localEvents.length === 0) return [];
 
-    // Map messageId to final display object
-    const msgMap = new Map<string, any>();
+  type MapMessage = {
+    id: string;
+    content: string;
+    senderId: string;
+    createdAt: Date;
+    status: 'sent' | 'delivered' | 'read' | 'failed';
+    readAt: Date | null;
+    deliveredAt: Date | null;
+  };
+
+  // Map messageId to final display object
+  const msgMap = new Map<string, MapMessage>();
 
     // Sort array by time to replay events in order
     const sorted = [...localEvents].sort((a, b) => a.timestamp - b.timestamp);

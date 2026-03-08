@@ -70,16 +70,7 @@ export default function UserProfile({ user }: UserProfileProps) {
     },
   });
 
-  // Message mutation
-  const sendMessageMutation = api.message.sendMessage.useMutation({
-    onSuccess: (data) => {
-      // Navigate to messages page with conversation
-      window.location.href = `/messages?conversationId=${data.conversationId ?? ''}`;
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
+  // Removed unused sendMessageMutation
 
   const handleFollow = () => {
     if (!session) {

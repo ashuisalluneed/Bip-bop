@@ -22,6 +22,7 @@ wss.on("connection", (ws: WebSocket) => {
 
   ws.on("message", async (raw: RawData) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const event = JSON.parse(raw.toString()) as {
         type: string;
         payload: Record<string, unknown>;
@@ -36,6 +37,7 @@ wss.on("connection", (ws: WebSocket) => {
         data: {
           id: event.id ?? crypto.randomUUID(),
           type: event.type,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
           payload: event.payload as any,
           vectorClock: event.vectorClock ?? {},
           timestamp: BigInt(Date.now()),

@@ -88,6 +88,7 @@ export async function POST(req: Request) {
       }
 
       // Upload to Vercel Blob Storage
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       const blob = await put(fileName, file, {
         access: "public",
         addRandomSuffix: false,

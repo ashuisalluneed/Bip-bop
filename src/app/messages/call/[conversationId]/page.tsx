@@ -33,7 +33,6 @@ export default function CallPage() {
         startMedia,
         startCall,
         endCall,
-        setCallStatus,
     } = useWebRTC({
         conversationId,
         userId: session?.user?.id ?? "",
@@ -43,16 +42,16 @@ export default function CallPage() {
     // Start media immediately
     useEffect(() => {
         if (status === "authenticated" && conversationId) {
-            startMedia();
+            void startMedia();
         }
-    }, [status, conversationId]);
+    }, [status, conversationId, startMedia]);
 
     // Handle auto-starting the call if we are the initiator
     useEffect(() => {
         if (localStream && !incoming && !isCallActive && callStatus === "idle") {
-            startCall();
+            void startCall();
         }
-    }, [localStream, incoming, isCallActive, callStatus]);
+    }, [localStream, incoming, isCallActive, callStatus, startCall]);
 
     // Bind local stream to video tag
     useEffect(() => {

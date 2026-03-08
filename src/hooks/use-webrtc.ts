@@ -79,6 +79,7 @@ export function useWebRTC({ conversationId, userId, isVideo = true }: UseWebRTCP
         const pusher = getPusherClient();
         const channel = pusher.subscribe(conversationChannel(conversationId));
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         channel.bind(PUSHER_EVENTS.CALL_SIGNALING, async (data: any) => {
             // Ignore our own signals
             if (data.senderId === userId) return;

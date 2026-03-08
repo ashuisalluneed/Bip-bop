@@ -18,7 +18,12 @@ export function createAuroraGateway() {
 
         ws.on("message", (messageData) => {
             try {
-                const data = JSON.parse(messageData.toString());
+                // eslint-disable-next-line @typescript-eslint/no-base-to-string
+                const data = JSON.parse(messageData.toString()) as {
+                    type?: string;
+                    conversationId?: string;
+                    envelope?: unknown;
+                };
 
                 // 1. Handle Subscriptions
                 if (data.type === "subscribe" && data.conversationId) {
