@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { checkRateLimit } from "~/lib/rate-limit";
 
 const registerSchema = z.object({
   username: z.string().min(3).max(50),
@@ -21,6 +22,10 @@ export const authRouter = createTRPCRouter({
   register: publicProcedure
     .input(registerSchema)
     .mutation(async ({ input, ctx }) => {
+      // Rate limit: 5 registration attempts per minute per IP
+      const ip = ctx.headers.get("x-forwarded-for") ?? ctx.headers.get("x-real-ip") ?? "unknown";
+      checkRateLimit(`auth.register:${ip}`, 5, 60_000);
+
       const usernameTrimmed = input.username.trim();
       const nameTrimmed = input.name.trim();
       const emailNormalized = input.email.trim().toLowerCase();

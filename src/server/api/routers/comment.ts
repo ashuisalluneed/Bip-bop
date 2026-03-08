@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "~/server/api/trpc";
+import { checkRateLimit } from "~/lib/rate-limit";
 
 export const commentRouter = createTRPCRouter({
   getByVideoId: publicProcedure
@@ -22,13 +24,18 @@ export const commentRouter = createTRPCRouter({
     }),
 
   create: protectedProcedure
-    .input(z.object({ videoId: z.number(), content: z.string().min(1) }))
+    .input(z.object({ videoId: z.number(), content: z.string().min(1).max(500) }))
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // Rate limit: 20 comments per minute per user
+      checkRateLimit(`comment.create:${userId}`, 20, 60_000);
+
       const comment = await ctx.db.comment.create({
         data: {
           content: input.content,
           videoId: input.videoId,
-          userId: ctx.session.user.id,
+          userId,
         },
         include: {
           user: {
@@ -49,13 +56,13 @@ export const commentRouter = createTRPCRouter({
       });
 
       // Don't notify if user comments on their own video
-      if (video && video.userId !== ctx.session.user.id) {
+      if (video && video.userId !== userId) {
         await ctx.db.notification.create({
           data: {
             type: "comment",
             content: "commented on your video",
             userId: video.userId,
-            actorId: ctx.session.user.id,
+            actorId: userId,
             videoId: input.videoId,
           },
         });
@@ -73,11 +80,11 @@ export const commentRouter = createTRPCRouter({
       });
 
       if (!comment) {
-        throw new Error("Comment not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Comment not found" });
       }
 
       if (comment.userId !== ctx.session.user.id) {
-        throw new Error("Not authorized");
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized to delete this comment" });
       }
 
       await ctx.db.comment.delete({

@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "~/server/api/trpc";
+
 
 export const followRouter = createTRPCRouter({
   /**
@@ -14,7 +16,10 @@ export const followRouter = createTRPCRouter({
       const currentUserId = ctx.session.user.id;
 
       if (currentUserId === userId) {
-        throw new Error("You cannot follow yourself");
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You cannot follow yourself",
+        });
       }
 
       const existingFollow = await ctx.db.follow.findUnique({

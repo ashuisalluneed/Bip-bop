@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "~/server/api/trpc";
 
 export const userRouter = createTRPCRouter({
@@ -192,7 +192,7 @@ export const userRouter = createTRPCRouter({
         });
 
         if (existingUser && existingUser.id !== userId) {
-          throw new Error("Username is already taken");
+          throw new TRPCError({ code: "CONFLICT", message: "Username is already taken" });
         }
       }
 
@@ -203,7 +203,7 @@ export const userRouter = createTRPCRouter({
         });
 
         if (existingUser && existingUser.id !== userId) {
-          throw new Error("Email is already in use");
+          throw new TRPCError({ code: "CONFLICT", message: "Email is already in use" });
         }
       }
 

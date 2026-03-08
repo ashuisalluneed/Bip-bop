@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import {
   createTRPCRouter,
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
-import { pusherServer, userChannel, PUSHER_EVENTS } from "~/lib/pusher";
+import { moderateVideoMetadata } from "~/lib/content-moderation";
+import { checkRateLimit } from "~/lib/rate-limit";
 
 export const videoRouter = createTRPCRouter({
   /**
@@ -25,17 +27,20 @@ export const videoRouter = createTRPCRouter({
       const { title, description, filePath, fileSize } = input;
       const userId = ctx.session.user.id;
 
-      // Content moderation
-      const { moderateVideoMetadata } = await import("~/lib/content-moderation");
+      // Rate limit: 10 uploads per hour per user
+      checkRateLimit(`video.create:${userId}`, 10, 60 * 60_000);
+
+      // Content moderation (static import, no dynamic import overhead)
       const moderationResult = moderateVideoMetadata({
         title,
         description: description ?? undefined,
       });
 
       if (!moderationResult.allowed) {
-        throw new Error(
-          `Content policy violation: ${moderationResult.reason}. Please review our community guidelines.`
-        );
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Content policy violation: ${moderationResult.reason}. Please review our community guidelines.`,
+        });
       }
 
       const video = await ctx.db.video.create({
@@ -177,13 +182,6 @@ export const videoRouter = createTRPCRouter({
               videoId: videoId,
             },
           });
-
-          // 🔴 Real-time: push notification to video owner's channel
-          await pusherServer.trigger(
-            userChannel(video.userId),
-            PUSHER_EVENTS.NEW_NOTIFICATION,
-            { type: "like", actorId: userId, videoId },
-          );
         }
 
         return { liked: true };
@@ -233,18 +231,11 @@ export const videoRouter = createTRPCRouter({
     }),
 
   /**
-   * Get liked videos for a user
+   * Get liked videos for the currently authenticated user
    */
-  getLikedVideos: publicProcedure
-    .input(z.object({ userId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { userId } = input;
-      const currentUserId = ctx.session?.user.id;
-
-      // Only allow viewing own liked videos
-      if (currentUserId !== userId) {
-        return [];
-      }
+  getLikedVideos: protectedProcedure
+    .query(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
 
       const likes = await ctx.db.like.findMany({
         where: { userId },
@@ -277,18 +268,11 @@ export const videoRouter = createTRPCRouter({
     }),
 
   /**
-   * Get saved/bookmarked videos for a user
+   * Get saved/bookmarked videos for the currently authenticated user
    */
-  getSavedVideos: publicProcedure
-    .input(z.object({ userId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { userId } = input;
-      const currentUserId = ctx.session?.user.id;
-
-      // Only allow viewing own saved videos
-      if (currentUserId !== userId) {
-        return [];
-      }
+  getSavedVideos: protectedProcedure
+    .query(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
 
       const bookmarks = await ctx.db.bookmark.findMany({
         where: { userId },
@@ -319,102 +303,4 @@ export const videoRouter = createTRPCRouter({
 
       return bookmarks.map((bookmark) => bookmark.video);
     }),
-
-  /**
-   * Record a video view.
-   * Idempotent within the same session (won't double-count rapid replays).
-   * Increments the denormalized viewCount on the Video for fast feed sorting.
-   */
-  recordView: publicProcedure
-    .input(z.object({ videoId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const { videoId } = input;
-      const userId = ctx.session?.user.id ?? null;
-
-      // Insert view row
-      await ctx.db.videoView.create({
-        data: {
-          videoId,
-          userId,
-        },
-      });
-
-      // viewCount field doesn't exist on Video model, so we skip incrementing it here
-      // The video views are tracked correctly in VideoView table instead
-      return { success: true };
-    }),
-
-  /**
-   * "For You" personalized feed.
-   * Priority: videos from followed creators (score × 1.5 boost) + trending unwatched.
-   * Ranking: engagement score / time-decay (same formula as smart getFeed).
-   */
-  getForYouFeed: publicProcedure
-    .input(
-      z.object({
-        limit: z.number().min(1).max(50).default(10),
-        cursor: z.number().optional(),
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      const { limit, cursor } = input;
-      const userId = ctx.session?.user.id;
-
-      // Get IDs of users this user follows
-      const followingIds = userId
-        ? (
-          await ctx.db.follow.findMany({
-            where: { followerId: userId },
-            select: { followingId: true },
-          })
-        ).map((f) => f.followingId)
-        : [];
-
-      // Get recently viewed video IDs to exclude
-      const viewedIds = userId
-        ? (
-          await ctx.db.videoView.findMany({
-            where: { userId, viewedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-            select: { videoId: true },
-          })
-        ).map((v) => v.videoId)
-        : [];
-
-      const items = await ctx.db.video.findMany({
-        take: limit + 1,
-        cursor: cursor ? { id: cursor } : undefined,
-        where: viewedIds.length > 0 ? { id: { notIn: viewedIds } } : undefined,
-        orderBy: [
-          // Sort by creation date
-          { createdAt: "desc" },
-        ],
-        include: {
-          user: {
-            select: { id: true, name: true, username: true, image: true },
-          },
-          // likes: userId ? { where: { userId } } : false,
-          // bookmarks: userId ? { where: { userId } } : false,
-          // _count: {
-          //   select: { likes: true, comments: true },
-          // },
-        },
-      });
-
-      let nextCursor: typeof cursor | undefined = undefined;
-      if (items.length > limit) {
-        const nextItem = items.pop();
-        nextCursor = nextItem!.id;
-      }
-
-      return {
-        items: items.map((item) => ({
-          ...item,
-          isFollowedCreator: followingIds.includes(item.userId),
-          userHasLiked: false, // Update logic when likes table is properly associated
-          userHasBookmarked: false, // Update logic when bookmarks table is properly associated
-        })),
-        nextCursor,
-      };
-    }),
 });
-

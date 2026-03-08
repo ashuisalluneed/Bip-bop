@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { createEvent, type EventEnvelope } from "~/lib/aurora/event-envelope";
-// Keeping pusher imports temporarily for other things, but removing from message
-import {
-  pusherServer,
-  conversationChannel,
-  PUSHER_EVENTS,
-} from "~/lib/pusher";
+import { checkRateLimit } from "~/lib/rate-limit";
 
 export const messageRouter = createTRPCRouter({
   /**
@@ -36,9 +30,9 @@ export const messageRouter = createTRPCRouter({
             },
           },
         },
-        messageEvents: {
+        messages: {
           orderBy: {
-            timestamp: "desc",
+            createdAt: "desc",
           },
           take: 1,
         },
@@ -51,23 +45,34 @@ export const messageRouter = createTRPCRouter({
     return conversations.map((conv) => ({
       ...conv,
       otherParticipant: conv.participants.find((p) => p.userId !== userId)?.user,
-      // For legacy UI compatibility, we map the last event payload back to a "message"
-      lastMessage: conv.messageEvents[0] ? {
-        id: conv.messageEvents[0].id,
-        content: (conv.messageEvents[0].payload as any).content || "Event",
-        createdAt: conv.messageEvents[0].createdAt,
-        senderId: conv.messageEvents[0].senderId,
-      } : null,
+      lastMessage: conv.messages[0],
     }));
   }),
 
   /**
-   * Get event history for a specific conversation
+   * Get messages for a specific conversation
    */
   getMessages: protectedProcedure
     .input(z.object({ conversationId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const events = await ctx.db.messageEvent.findMany({
+      const userId = ctx.session.user.id;
+
+      // Security: verify the caller is a participant in this conversation
+      const participant = await ctx.db.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          userId,
+        },
+      });
+
+      if (!participant) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a participant in this conversation.",
+        });
+      }
+
+      const messages = await ctx.db.message.findMany({
         where: {
           conversationId: input.conversationId,
         },
@@ -82,31 +87,31 @@ export const messageRouter = createTRPCRouter({
           },
         },
         orderBy: {
-          timestamp: "asc",
+          createdAt: "asc",
         },
       });
 
-      // The frontend will need to project these events into a message list.
-      // For now, we return the raw events.
-      return events as unknown as EventEnvelope[];
+      return messages;
     }),
 
   /**
-   * Send a message (creates a message:send Event)
+   * Send a message
    */
   sendMessage: protectedProcedure
     .input(
       z.object({
         conversationId: z.string().optional(),
         recipientId: z.string(),
-        content: z.string().min(1),
-        // Client can pass its current vector clock, otherwise we start empty
-        vectorClock: z.record(z.string(), z.number()).optional(),
+        content: z.string().min(1).max(2000),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const senderId = ctx.session.user.id;
-      const { conversationId, recipientId, content, vectorClock } = input;
+
+      // Rate limit: 30 messages per minute per user
+      checkRateLimit(`sendMessage:${senderId}`, 30, 60_000);
+
+      const { conversationId, recipientId, content } = input;
 
       let convId = conversationId;
 
@@ -115,8 +120,20 @@ export const messageRouter = createTRPCRouter({
         const existingConv = await ctx.db.conversation.findFirst({
           where: {
             AND: [
-              { participants: { some: { userId: senderId } } },
-              { participants: { some: { userId: recipientId } } },
+              {
+                participants: {
+                  some: {
+                    userId: senderId,
+                  },
+                },
+              },
+              {
+                participants: {
+                  some: {
+                    userId: recipientId,
+                  },
+                },
+              },
             ],
           },
         });
@@ -124,6 +141,7 @@ export const messageRouter = createTRPCRouter({
         if (existingConv) {
           convId = existingConv.id;
         } else {
+          // Create new conversation
           const newConv = await ctx.db.conversation.create({
             data: {
               participants: {
@@ -138,29 +156,12 @@ export const messageRouter = createTRPCRouter({
         }
       }
 
-      // Create the Aurora Event Envelope
-      const envelope = createEvent(
-        "message:send",
-        {
-          messageId: crypto.randomUUID(),
-          content,
-        },
-        vectorClock || {},
-        senderId,
-        convId
-      );
-
-      // Persist the event to the database
-      const savedEvent = await ctx.db.messageEvent.create({
+      // Create the message
+      const message = await ctx.db.message.create({
         data: {
-          id: envelope.id,
-          type: envelope.type,
-          // Need to manually cast this to Prisma Json to satisfy type compiler in TRPC
-          payload: envelope.payload as any,
-          vectorClock: envelope.vectorClock as any,
-          timestamp: envelope.timestamp,
-          senderId: envelope.senderId,
-          conversationId: envelope.conversationId,
+          content,
+          senderId,
+          conversationId: convId,
         },
         include: {
           sender: {
@@ -180,25 +181,21 @@ export const messageRouter = createTRPCRouter({
         data: { updatedAt: new Date() },
       });
 
-      // 🔴 Deprecated Pusher trigger (Phase 2), will be replaced by the WS Gateway natively
-      // But keeping it here temporarily so the UI doesn't completely break before P3.4
-      await pusherServer.trigger(
-        conversationChannel(convId),
-        PUSHER_EVENTS.NEW_MESSAGE,
-        savedEvent,
-      );
-
-      return savedEvent;
+      return {
+        ...message,
+        conversationId: convId,
+      };
     }),
 
   /**
-   * Mark conversation events as read
+   * Mark conversation as read
    */
   markAsRead: protectedProcedure
     .input(z.object({ conversationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
 
+      // Update conversation participant
       await ctx.db.conversationParticipant.updateMany({
         where: {
           conversationId: input.conversationId,
@@ -209,34 +206,41 @@ export const messageRouter = createTRPCRouter({
         },
       });
 
-      const envelope = createEvent(
-        "message:read",
-        { lastReadTimestamp: Date.now() },
-        {},
-        userId,
-        input.conversationId
-      );
-
-      await ctx.db.messageEvent.create({
+      // Mark all messages in conversation as read
+      await ctx.db.message.updateMany({
+        where: {
+          conversationId: input.conversationId,
+          senderId: { not: userId }, // Only mark others' messages
+          status: { not: "read" },
+        },
         data: {
-          id: envelope.id,
-          type: envelope.type,
-          payload: envelope.payload as any,
-          vectorClock: envelope.vectorClock as any,
-          timestamp: envelope.timestamp,
-          senderId: envelope.senderId,
-          conversationId: envelope.conversationId,
-        }
+          status: "read",
+          readAt: new Date(),
+        },
       });
 
       return { success: true };
     }),
 
+  /**
+   * Mark messages as delivered when user opens conversation
+   */
   markAsDelivered: protectedProcedure
     .input(z.object({ conversationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // In Event Sourcing, "delivered" is just another event.
-      // We can implement this later if needed.
+      const userId = ctx.session.user.id;
+
+      await ctx.db.message.updateMany({
+        where: {
+          conversationId: input.conversationId,
+          senderId: { not: userId },
+          status: "sent",
+        },
+        data: {
+          status: "delivered",
+        },
+      });
+
       return { success: true };
     }),
 });

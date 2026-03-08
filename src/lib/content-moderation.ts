@@ -49,20 +49,18 @@ const SUSPICIOUS_PATTERNS = [
  * Check if text contains banned content
  */
 export function containsBannedContent(text: string): boolean {
-  const lowerText = text.toLowerCase();
-  
-  // Check banned keywords
+  // Use word-boundary regex to avoid false positives (e.g. "hackathon", "blood orange", "adult education")
   const hasBannedKeyword = BANNED_KEYWORDS.some((keyword) =>
-    lowerText.includes(keyword.toLowerCase())
+    new RegExp(`\\b${keyword}\\b`, "i").test(text)
   );
-  
+
   if (hasBannedKeyword) return true;
-  
+
   // Check suspicious patterns
   const hasSuspiciousPattern = SUSPICIOUS_PATTERNS.some((pattern) =>
     pattern.test(text)
   );
-  
+
   return hasSuspiciousPattern;
 }
 
@@ -110,17 +108,17 @@ export function getContentWarningLevel(text: string): "safe" | "warning" | "bloc
   if (containsBannedContent(text)) {
     return "blocked";
   }
-  
-  // Check for warning-level content
+
+  // Use word-boundary regex to avoid false positives on warning-level words
   const warningKeywords = ["violence", "blood", "scary"];
   const hasWarning = warningKeywords.some((keyword) =>
-    text.toLowerCase().includes(keyword)
+    new RegExp(`\\b${keyword}\\b`, "i").test(text)
   );
-  
+
   if (hasWarning) {
     return "warning";
   }
-  
+
   return "safe";
 }
 
