@@ -72,29 +72,58 @@ export async function POST(req: Request) {
     const fileExtension = file.name.split(".").pop() ?? "mp4";
     const fileName = `videos/${session.user.id}-${Date.now()}.${fileExtension}`;
 
-    // Check if Blob storage is configured
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return NextResponse.json(
-        { 
-          error: "Video storage not configured. Please contact the administrator.",
-          details: "BLOB_READ_WRITE_TOKEN is missing"
-        },
-        { status: 503 }
-      );
+    // Use Blob storage in production, local storage in development
+    const isProduction = process.env.NODE_ENV === "production";
+    
+    if (isProduction) {
+      // Check if Blob storage is configured
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        return NextResponse.json(
+          { 
+            error: "Video storage not configured. Please contact the administrator.",
+            details: "BLOB_READ_WRITE_TOKEN is missing"
+          },
+          { status: 503 }
+        );
+      }
+
+      // Upload to Vercel Blob Storage
+      const blob = await put(fileName, file, {
+        access: "public",
+        addRandomSuffix: false,
+      });
+
+      return NextResponse.json({
+        success: true,
+        filePath: blob.url,
+        fileSize: file.size,
+        message: "Video uploaded successfully",
+      });
+    } else {
+      // Local development - save to filesystem
+      const { writeFile, mkdir } = await import("fs/promises");
+      const { join } = await import("path");
+      const { existsSync } = await import("fs");
+      
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      // Ensure uploads directory exists
+      const uploadsDir = join(process.cwd(), "public", "uploads");
+      if (!existsSync(uploadsDir)) {
+        await mkdir(uploadsDir, { recursive: true });
+      }
+
+      const filePath = join(uploadsDir, fileName.replace("videos/", ""));
+      await writeFile(filePath, buffer);
+
+      return NextResponse.json({
+        success: true,
+        filePath: `/uploads/${fileName.replace("videos/", "")}`,
+        fileSize: file.size,
+        message: "Video uploaded successfully",
+      });
     }
-
-    // Upload to Vercel Blob Storage
-    const blob = await put(fileName, file, {
-      access: "public",
-      addRandomSuffix: false,
-    });
-
-    return NextResponse.json({
-      success: true,
-      filePath: blob.url,
-      fileSize: file.size,
-      message: "Video uploaded successfully",
-    });
   } catch (error) {
     console.error("Upload error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
